@@ -4,9 +4,6 @@ import "./StorageInterface.sol";
 
 contract SystemStorage is StorageInterface {
 
-    // Const current system contract address key
-    bytes32 CSCA = keccak256("current.system.address");
-
     // Public data
     mapping(bytes32 => address) public addressStorage;
     mapping(bytes32 => address[]) public addressArrayStorage;
@@ -18,7 +15,8 @@ contract SystemStorage is StorageInterface {
 
     // Only current system contract can call this function.
     modifier onlyCurrentSystemContract() {
-        require(msg.sender == addressStorage[CSCA]);
+        // System contract address
+        require(boolStorage[keccak256("system.address", msg.sender)]);
         _;
     }
 
