@@ -19,7 +19,7 @@ contract SystemContract is SystemStorage, ProducersOpInterface {
         producers[index] = producer;
     }
 
-    function getProducers() public returns(address[]) {
+    function getProducers() external view returns(address[]) {
         return producers;
     }
 

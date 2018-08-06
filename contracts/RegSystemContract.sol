@@ -195,9 +195,37 @@ contract RegSystemContract {
 
 
     /**
-     * @dev Get top producers(may include empty address only when producer's length is less than defaultLength)
+     * @dev Get producer's info(return voted weight now only)
+     * @dev Don't validate producer
+     */
+    function getProducer(address producer) external view returns(uint) {
+        return systemStorage.getUint(keccak256("producer.voteWeight", producer));
+    }
+
+
+    /**
+     * @dev Get producers(may include empty address only when producer's length is less than defaultLength)
      */
     function getProducers() external view returns(address[]) {
         return producerOp.getProducers();
+    }
+
+
+    /**
+     * @dev Get all producer's address and voted weight, the record of address and voted weight is the same
+     */
+    function getAllProducersInfo() external view returns(address[], uint[]) {
+        address[] memory tmpProducers = producerOp.getProducers();
+        uint[] memory votedWeight = new uint[](tmpProducers.length);
+        for (var i = 0; i < tmpProducers.length; i++) {
+            if (tmpProducers[i] != address(0)) {
+                // Get producer's votedWeight
+                votedWeight[i] = systemStorage.getUint(keccak256("producer.voteWeight", tmpProducers[i]));
+            } else {
+                votedWeight[i] = 0;
+            }
+        }
+
+        return (tmpProducers, votedWeight);
     }
 }

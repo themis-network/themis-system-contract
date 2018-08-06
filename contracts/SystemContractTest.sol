@@ -21,7 +21,7 @@ contract SystemContractTest is SystemStorage, ProducersOpInterface {
         boolStorage[keccak256("system.address", systemContract)] = true;
     }
 
-    function pushProducers(address producer) public  {
+    function pushProducers(address producer) public onlyCurrentSystemContract {
         producers.push(producer);
     }
 
@@ -29,7 +29,7 @@ contract SystemContractTest is SystemStorage, ProducersOpInterface {
         producers[index] = producer;
     }
 
-    function getProducers() public returns(address[]) {
+    function getProducers() external view returns(address[]) {
         return producers;
     }
 

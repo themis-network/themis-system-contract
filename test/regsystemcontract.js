@@ -35,6 +35,20 @@ contract("Reg System Contract", function (accounts) {
         log.args.webUrl.should.equal(webUrl);
         log.args.p2pUrl.should.equal(p2pUrl);
         log.args.deposit.should.be.bignumber.equal(deposit);
+
+        const producer2 = accounts[0];
+        const logs2 = await this.RegSystemContractTestIns.regProducerCandidates(name, webUrl, p2pUrl, {from: producer2, value: deposit});
+        const log2 = logs2.logs.find(e => e.event === "LogRegProducerCandidates");
+        should.exist(log2);
+        log2.args.producer.should.equal(producer2);
+        log2.args.name.should.equal(name);
+        log2.args.webUrl.should.equal(webUrl);
+        log2.args.p2pUrl.should.equal(p2pUrl);
+        log2.args.deposit.should.be.bignumber.equal(deposit);
+
+
+        const newProducers = await this.RegSystemContractTestIns.getProducers();
+        newProducers.length.should.equal(2);
     })
 
 
@@ -66,11 +80,14 @@ contract("Reg System Contract", function (accounts) {
 
     it("producer can unreg", async function () {
         const producer = accounts[1];
+        const producer2 = accounts[0];
 
         const { logs } = await this.RegSystemContractTestIns.unregProducer({from: producer});
         const log = logs.find(e => e.event === "LogUnregProducer");
         should.exist(log);
         log.args.producer.should.equal(producer);
+
+        await this.RegSystemContractTestIns.unregProducer({from: producer2});
     })
 
 
@@ -83,7 +100,7 @@ contract("Reg System Contract", function (accounts) {
 
         await this.RegSystemContractTestIns.regProducerCandidates(name, webUrl, p2pUrl, {from: producer, value: deposit});
         const producers = await this.RegSystemContractTestIns.getProducers();
-        producers.length.should.equal(1);
+        producers.length.should.equal(2);
 
         const producer_2 = accounts[4];
         await this.RegSystemContractTestIns.regProducerCandidates(name, webUrl, p2pUrl, {from: producer_2, value: deposit});

@@ -8,5 +8,5 @@ contract ProducersOpInterface {
 
     function deleteProducer(uint index) public;
 
-    function getProducers() public returns(address[]);
+    function getProducers() external view returns(address[]);
 }
