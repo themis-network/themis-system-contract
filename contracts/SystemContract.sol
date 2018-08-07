@@ -26,5 +26,13 @@ contract SystemContract is SystemStorage, ProducersOpInterface {
     function deleteProducer(uint index) public onlyCurrentSystemContract {
         delete producers[index];
     }
+
+    function getVoteSystemContract() public returns(address) {
+        return addressStorage[keccak256("system.voteSystemContract")];
+    }
+
+    function getRegSystemContract() public returns(address) {
+        return addressStorage[keccak256("system.regSystemContract")];
+    }
     // TODO implement upgradeable
 }

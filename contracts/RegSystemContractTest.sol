@@ -220,7 +220,7 @@ contract RegSystemContractTest {
     /**
      * @dev Get all producer's address and voted weight, the record of address and voted weight is the same
      */
-    function getAllProducersInfo() external view returns(address[], uint[]) {
+    function getAllProducersInfo() external view returns(address[], uint[], uint) {
         address[] memory tmpProducers = producerOp.getProducers();
         uint[] memory votedWeight = new uint[](tmpProducers.length);
         for (var i = 0; i < tmpProducers.length; i++) {
@@ -232,6 +232,6 @@ contract RegSystemContractTest {
             }
         }
 
-        return (tmpProducers, votedWeight);
+        return (tmpProducers, votedWeight, lengthOFEpoch);
     }
 }

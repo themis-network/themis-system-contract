@@ -21,8 +21,8 @@ contract RegSystemContract {
     // 00:00:00 1/1/3000 for init out time
     uint initOutTime = 32503651200;
 
-    StorageInterface systemStorage = StorageInterface(0);
-    ProducersOpInterface producerOp = ProducersOpInterface(0);
+    StorageInterface systemStorage = StorageInterface(1);
+    ProducersOpInterface producerOp = ProducersOpInterface(1);
 
     // Tmp record index of unreg producers
     uint[] unregIndex;
@@ -214,7 +214,7 @@ contract RegSystemContract {
     /**
      * @dev Get all producer's address and voted weight, the record of address and voted weight is the same
      */
-    function getAllProducersInfo() external view returns(address[], uint[]) {
+    function getAllProducersInfo() external view returns(address[], uint[], uint) {
         address[] memory tmpProducers = producerOp.getProducers();
         uint[] memory votedWeight = new uint[](tmpProducers.length);
         for (var i = 0; i < tmpProducers.length; i++) {
@@ -226,6 +226,6 @@ contract RegSystemContract {
             }
         }
 
-        return (tmpProducers, votedWeight);
+        return (tmpProducers, votedWeight, lengthOFEpoch);
     }
 }
