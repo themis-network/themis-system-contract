@@ -43,7 +43,8 @@ contract VoteSystemContractTest {
     function userVote(address proxy, address[] accounts) external payable returns(bool) {
         // producer => 1; proxy => 2; voter => 3;
         // User haven't vote before
-        require(systemStorage.getUint(keccak256("user.role", msg.sender)) == 0);
+        bytes32 roleKey = keccak256("user.role", msg.sender);
+        require(systemStorage.getUint(roleKey) == 0);
         // User should stake GET for vote at first time
         require(msg.value >= leastDepositForVote);
         // Producer/Proxy should have reg and be active
@@ -61,7 +62,7 @@ contract VoteSystemContractTest {
          * Update vote info, check after
          */
         // Update role of voter
-        systemStorage.setUint(keccak256("user.role", msg.sender), 3);
+        systemStorage.setUint(roleKey, 3);
         // Update amount of get coin staked by this voter
         systemStorage.setUint(keccak256("vote.staked", msg.sender), msg.value);
         // Set vote weight
@@ -77,19 +78,22 @@ contract VoteSystemContractTest {
          * Update related vote info
          */
         // Vote for proxy
+        bytes32 weightKey;
         if (proxy != address(0)) {
             // Update proxy's vote weight delegated by votes
-            systemStorage.setUint(keccak256("vote.weight", proxy), systemStorage.getUint(keccak256("vote.weight", proxy)).add(weight));
+            weightKey = keccak256("vote.weight", proxy);
+            systemStorage.setUint(weightKey, systemStorage.getUint(weightKey).add(weight));
 
             // If proxy have vote for producers, update related weight of producers. otherwise, do nothing
             // Not necessary to check status of proxy's vote, because unvote will delete voted producers
             address[] memory votedProducers = systemStorage.getAddressArray(keccak256("vote.voteProducers", proxy));
             updateReleatedProducersVoteWeight(votedProducers, proxy, weight, true);
-        // Vote for producers
+            // Vote for producers
         } else {
             // Update producer's vote weight
             for(uint i = 0; i < accounts.length; i++) {
-                systemStorage.setUint(keccak256("producer.voteWeight", accounts[i]), systemStorage.getUint(keccak256("producer.voteWeight", accounts[i])).add(weight));
+                weightKey = keccak256("producer.voteWeight", accounts[i]);
+                systemStorage.setUint(weightKey, systemStorage.getUint(weightKey).add(weight));
             }
         }
 
@@ -115,19 +119,23 @@ contract VoteSystemContractTest {
          */
         uint proxyWeight = systemStorage.getUint(keccak256("vote.weight", msg.sender));
         address[] memory votedProducers = systemStorage.getAddressArray(keccak256("vote.voteProducers", msg.sender));
+        bytes32 weightKey;
         if (votedProducers.length == 0) {
             // Proxy vote for producer at first time
             for(i = 0; i < accounts.length; i++) {
-                systemStorage.setUint(keccak256("producer.voteWeight", accounts[i]), systemStorage.getUint(keccak256("producer.voteWeight", accounts[i])).add(proxyWeight));
+                weightKey = keccak256("producer.voteWeight", accounts[i]);
+                systemStorage.setUint(weightKey, systemStorage.getUint(weightKey).add(proxyWeight));
             }
         } else {
             // Proxy have voted before
             for(uint i = 0; i < votedProducers.length; i++) {
-                systemStorage.setUint(keccak256("producer.voteWeight", votedProducers[i]), systemStorage.getUint(keccak256("producer.voteWeight", votedProducers[i])).sub(proxyWeight));
+                weightKey = keccak256("producer.voteWeight", votedProducers[i]);
+                systemStorage.setUint(weightKey, systemStorage.getUint(weightKey).sub(proxyWeight));
             }
 
             for(i = 0; i < accounts.length; i++) {
-                systemStorage.setUint(keccak256("producer.voteWeight", accounts[i]), systemStorage.getUint(keccak256("producer.voteWeight", accounts[i])).add(proxyWeight));
+                weightKey = keccak256("producer.voteWeight", accounts[i]);
+                systemStorage.setUint(weightKey, systemStorage.getUint(weightKey).add(proxyWeight));
             }
         }
         // Update status of proxy vote
@@ -148,7 +156,8 @@ contract VoteSystemContractTest {
         // producer => 1; proxy => 2; voter => 3;
         require(systemStorage.getUint(keccak256("user.role", msg.sender)) == 3);
         // Vote must be active now
-        require(systemStorage.getUint(keccak256("vote.status", msg.sender)) == 1);
+        bytes32 statusKey = keccak256("vote.status", msg.sender);
+        require(systemStorage.getUint(statusKey) == 1);
 
         uint weight = systemStorage.getUint(keccak256("vote.weight", msg.sender));
 
@@ -174,7 +183,7 @@ contract VoteSystemContractTest {
          * Update vote info
          */
         // Update status of vote
-        systemStorage.setUint(keccak256("vote.status", msg.sender), 2);
+        systemStorage.setUint(statusKey, 2);
         // Update unvote unvote time
         systemStorage.setUint(keccak256("vote.unvoteTime", msg.sender), now);
         // Delete vote producers
@@ -194,20 +203,24 @@ contract VoteSystemContractTest {
         // producer => 1; proxy => 2; voter => 3;
         require(systemStorage.getUint(keccak256("user.role", msg.sender)) == 2);
         // Vote must be active now
-        require(systemStorage.getUint(keccak256("vote.status", msg.sender)) == 1);
+        bytes32 statusKey = keccak256("vote.status", msg.sender);
+        require(systemStorage.getUint(statusKey) == 1);
 
         // Reduce related producer's weight
-        uint weight = systemStorage.getUint(keccak256("vote.weight", msg.sender));
-        address[] memory votedProducers = systemStorage.getAddressArray(keccak256("vote.voteProducers", msg.sender));
+        bytes32 weightKey = keccak256("vote.weight", msg.sender);
+        uint weight = systemStorage.getUint(weightKey);
+
+        bytes32 producerKey = keccak256("vote.voteProducers", msg.sender);
+        address[] memory votedProducers = systemStorage.getAddressArray(producerKey);
         updateReleatedProducersVoteWeight(votedProducers, msg.sender, weight, false);
 
 
         // Delete vote info for this proxy(proxy don't have real deposit, so not necessary to keep this info)
-        systemStorage.deleteAddressArray(keccak256("vote.voteProducers", msg.sender));
+        systemStorage.deleteAddressArray(producerKey);
         // Delete status of vote
-        systemStorage.setUint(keccak256("vote.status", msg.sender), 2);
+        systemStorage.setUint(statusKey, 2);
         // Delete weight
-        systemStorage.deleteUint(keccak256("vote.weight", msg.sender));
+        systemStorage.deleteUint(weightKey);
 
         emit LogProxyUnvote(msg.sender, now);
         return true;
@@ -225,12 +238,6 @@ contract VoteSystemContractTest {
         return (proxy, producers, staked, weight);
     }
 
-    /**
-     *
-     */
-    function getProxyWeight(address proxy) external view returns(uint) {
-        return systemStorage.getUint(keccak256("vote.weight", proxy));
-    }
 
     /**
      * @dev Validate producers: producers should be sorted, unique, reg and active
@@ -272,13 +279,15 @@ contract VoteSystemContractTest {
      */
     function updateReleatedProducersVoteWeight(address[] votedProducers, address voter, uint weight, bool flag) internal {
         uint newWeight;
+        bytes32 key;
         for(uint i = 0; i < votedProducers.length; i++) {
+            key = keccak256("producer.voteWeight", votedProducers[i]);
             if (flag) {
-                newWeight = systemStorage.getUint(keccak256("producer.voteWeight", votedProducers[i])).add(weight);
+                newWeight = systemStorage.getUint(key).add(weight);
             } else {
-                newWeight = systemStorage.getUint(keccak256("producer.voteWeight", votedProducers[i])).sub(weight);
+                newWeight = systemStorage.getUint(key).sub(weight);
             }
-            systemStorage.setUint(keccak256("producer.voteWeight", votedProducers[i]), newWeight);
+            systemStorage.setUint(key, newWeight);
         }
     }
 }

@@ -86,6 +86,25 @@ contract("Vote system contract", function (accounts) {
         weightAfter.sub(weightBefore).should.be.bignumber.equal(proxyWeight);
     })
 
+    it("can get all producer's info", async function () {
+        const producersInfo = await this.RegSystemContractTestIns.getAllProducersInfo();
+        const producer0 = accounts[1];
+        const producer1 = accounts[2];
+
+        // Check producer address
+        producersInfo[0][0].should.equal(producer0);
+        producersInfo[0][1].should.equal(producer1);
+
+        // Check for weight
+        const producer0Weight = web3.toWei(5, "ether");
+        const producer1Weight = new BigNumber(0);
+        producersInfo[1][0].should.be.bignumber.equal(producer0Weight);
+        producersInfo[1][1].should.be.bignumber.equal(producer1Weight);
+
+        // Default length of producers will be used
+        producersInfo[2].should.be.bignumber.equal(new BigNumber(4));
+    })
+
     // Contract get the producers or proxy user voted automatically
     it("user can unvote", async function () {
         const user = accounts[4];
@@ -103,7 +122,6 @@ contract("Vote system contract", function (accounts) {
         const votedWeightAfter = await this.RegSystemContractTestIns.getProducer(producer);
         votedWeightBefore.sub(votedWeightAfter).should.be.bignumber.equal(userWeight);
     })
-
 
     it("proxy can unvote", async function () {
         const proxy = accounts[3];

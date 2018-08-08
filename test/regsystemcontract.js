@@ -91,7 +91,7 @@ contract("Reg System Contract", function (accounts) {
     })
 
 
-    it("will use unreg index for producer reg first ", async function () {
+    it("producer can be right removed from array", async function () {
         const producer = accounts[3];
         const name = "producerName";
         const webUrl = "http://themis"
@@ -100,7 +100,7 @@ contract("Reg System Contract", function (accounts) {
 
         await this.RegSystemContractTestIns.regProducerCandidates(name, webUrl, p2pUrl, {from: producer, value: deposit});
         const producers = await this.RegSystemContractTestIns.getProducers();
-        producers.length.should.equal(2);
+        producers.length.should.equal(1);
 
         const producer_2 = accounts[4];
         await this.RegSystemContractTestIns.regProducerCandidates(name, webUrl, p2pUrl, {from: producer_2, value: deposit});

@@ -84,29 +84,8 @@ contract RegSystemContractTest {
         systemStorage.setUint(keccak256("producer.status", producer), 1);
         systemStorage.setUint(keccak256("producer.outTime", producer), initOutTime);
 
-        // Push producer to producers array when there is not unreged producer now
-        // If first producer unreg, it's place will not be replace
-        if (unregIndex.length == 0 || unregIndex[0] == 0) {
-            // Because 0 is the default value, so the index will be start from 1 not 0.
-            // And the actual index = index - 1
-            systemStorage.setUint(keccak256("producer.index", producer), producerOp.getProducers().length.add(1));
-            // Update producers
-            producerOp.pushProducers(producer);
-            // Use unregIndex to avoid length of producer's array increase constantly
-        } else {
-            // Use producer's true index
-            producerOp.updateProducer(producer, unregIndex[0].sub(1));
-            systemStorage.setUint(keccak256("producer.index", producer), unregIndex[0]);
-            // Replace last one to first and delete last one to keep unregIndex right
-            if (unregIndex.length > 1) {
-                unregIndex[0] = unregIndex[unregIndex.length-1];
-                delete(unregIndex[unregIndex.length-1]);
-            } else {
-                unregIndex[0] = 0;
-            }
-            // Important to reduce the length of array since delete will not do this
-            unregIndex.length--;
-        }
+        // Add producer and record index of producer
+        producerOp.addProducer(producer);
 
         emit LogRegProducerCandidates(msg.sender, name, webUrl, p2pUrl, msg.value);
         return true;
@@ -171,10 +150,8 @@ contract RegSystemContractTest {
         // Update unreg(out) time
         systemStorage.setUint(keccak256("producer.outTime", msg.sender), now);
 
-        // Set producers to zero address, use producers' true index
-        producerOp.updateProducer(address(0), systemStorage.getUint(keccak256("producer.index", msg.sender)).sub(1));
-        // unregIndex will keep index + 1 of producer's true index
-        unregIndex.push(systemStorage.getUint(keccak256("producer.index", msg.sender)));
+        // Remove producer from array
+        producerOp.removeProducer(msg.sender);
         // Delete all producer's info after withdraw
         emit LogUnregProducer(msg.sender, now);
         return true;
@@ -223,7 +200,7 @@ contract RegSystemContractTest {
     function getAllProducersInfo() external view returns(address[], uint[], uint) {
         address[] memory tmpProducers = producerOp.getProducers();
         uint[] memory votedWeight = new uint[](tmpProducers.length);
-        for (var i = 0; i < tmpProducers.length; i++) {
+        for (uint i = 0; i < tmpProducers.length; i++) {
             if (tmpProducers[i] != address(0)) {
                 // Get producer's votedWeight
                 votedWeight[i] = systemStorage.getUint(keccak256("producer.voteWeight", tmpProducers[i]));
