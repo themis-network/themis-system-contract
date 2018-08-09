@@ -41,7 +41,7 @@ contract SystemContract is SystemStorage, ProducersOpInterface {
 
     event LogVote(address indexed voter, bool auth);
 
-    event LogUpdateSystemContract(uint contractType, address newContract);
+    event LogUpdateSystemContract(uint contractType, address originalContract, address newContract);
 
     // Can only be called by active producer
     modifier onlyActiveProducer() {
@@ -96,6 +96,8 @@ contract SystemContract is SystemStorage, ProducersOpInterface {
 
             uint leastApproveCount = producers.length * 2 / 3 + 1;
             if (proposal.approveVoteCount >= leastApproveCount) {
+                // Make next proposal accessible
+                proposal.proposeTime = 0;
                 updateSystemContract(proposal.contractType, proposal.newContractAddress);
             }
         }
@@ -103,7 +105,7 @@ contract SystemContract is SystemStorage, ProducersOpInterface {
         emit LogVote(msg.sender, auth);
     }
 
-    function addProducer(address producer) public  {
+    function addProducer(address producer) public onlyCurrentSystemContract {
         // Record index of producer: actualIndex + 1
         uintStorage[keccak256("producer.index", producer)] = producers.length;
         producers.push(producer);
@@ -142,11 +144,11 @@ contract SystemContract is SystemStorage, ProducersOpInterface {
         return producers.length;
     }
 
-    function getVoteSystemContract() public returns(address) {
+    function getVoteSystemContract() public view returns(address) {
         return addressStorage[keccak256("system.voteSystemContract")];
     }
 
-    function getRegSystemContract() public returns(address) {
+    function getRegSystemContract() public view returns(address) {
         return addressStorage[keccak256("system.regSystemContract")];
     }
 
@@ -159,15 +161,21 @@ contract SystemContract is SystemStorage, ProducersOpInterface {
         if (contractType == 0) {
             address originalRegContract = addressStorage[keccak256("system.regSystemContract")];
             boolStorage[keccak256("system.address", originalRegContract)] = false;
+            boolStorage[keccak256("system.address", newContractAddress)] = true;
             addressStorage[keccak256("system.regSystemContract")] = newContractAddress;
+            emit LogUpdateSystemContract(contractType, originalRegContract, newContractAddress);
+            return;
         }
 
         if (contractType == 1) {
             address originalVoteContract = addressStorage[keccak256("system.voteSystemContract")];
             boolStorage[keccak256("system.address", originalVoteContract)] = false;
+            boolStorage[keccak256("ssystem.address", newContractAddress)] = true;
             addressStorage[keccak256("system.voteSystemContract")] = newContractAddress;
+            emit LogUpdateSystemContract(contractType, originalVoteContract, newContractAddress);
+            return;
         }
 
-        emit LogUpdateSystemContract(contractType, newContractAddress);
+        revert();
     }
 }

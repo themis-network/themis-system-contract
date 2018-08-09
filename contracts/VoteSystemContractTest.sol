@@ -13,7 +13,9 @@ contract VoteSystemContractTest {
     // The GET user should pay for voting
     uint leastDepositForVote = 1 ether;
 
-    // TODO event
+    // 72 hours lock for vote
+    uint lockTimeForVote = 72 * 60 * 60;
+
     StorageInterface systemStorage = StorageInterface(0);
 
     event LogUserVote(
@@ -28,6 +30,8 @@ contract VoteSystemContractTest {
     event LogUserUnvote(address indexed user, uint unvoteTime);
 
     event LogProxyUnvote(address indexed proxy, uint unvoteTime);
+
+    event LogWithdrawStake(address indexed user, uint stake, uint time);
 
     constructor(address mainStorage) public {
         require(mainStorage != address(0));
@@ -87,7 +91,7 @@ contract VoteSystemContractTest {
             // If proxy have vote for producers, update related weight of producers. otherwise, do nothing
             // Not necessary to check status of proxy's vote, because unvote will delete voted producers
             address[] memory votedProducers = systemStorage.getAddressArray(keccak256("vote.voteProducers", proxy));
-            updateReleatedProducersVoteWeight(votedProducers, proxy, weight, true);
+            updateRelatedProducersVoteWeight(votedProducers, proxy, weight, true);
             // Vote for producers
         } else {
             // Update producer's vote weight
@@ -171,12 +175,11 @@ contract VoteSystemContractTest {
             // If proxy have vote for producers, update related weight of producers. otherwise, do nothing
             // Not necessary to check status of proxy's vote, because unvote will delete voted producers
             votedProducers = systemStorage.getAddressArray(keccak256("vote.voteProducers", votedProxy));
-            updateReleatedProducersVoteWeight(votedProducers, votedProxy, weight, false);
-            return true;
+            updateRelatedProducersVoteWeight(votedProducers, votedProxy, weight, false);
         } else {
             // Vote for producer before
             votedProducers = systemStorage.getAddressArray(keccak256("vote.voteProducers", msg.sender));
-            updateReleatedProducersVoteWeight(votedProducers, msg.sender, weight, false);
+            updateRelatedProducersVoteWeight(votedProducers, msg.sender, weight, false);
         }
 
         /**
@@ -190,6 +193,8 @@ contract VoteSystemContractTest {
         systemStorage.deleteAddressArray(keccak256("vote.voteProducers", msg.sender));
         // Delete proxy
         systemStorage.deleteAddress(keccak256("vote.voteProxy", msg.sender));
+        // Delete vote weight
+        systemStorage.deleteUint(keccak256("vote.weight", msg.sender));
 
         emit LogUserUnvote(msg.sender, now);
         return true;
@@ -212,7 +217,7 @@ contract VoteSystemContractTest {
 
         bytes32 producerKey = keccak256("vote.voteProducers", msg.sender);
         address[] memory votedProducers = systemStorage.getAddressArray(producerKey);
-        updateReleatedProducersVoteWeight(votedProducers, msg.sender, weight, false);
+        updateRelatedProducersVoteWeight(votedProducers, msg.sender, weight, false);
 
 
         // Delete vote info for this proxy(proxy don't have real deposit, so not necessary to keep this info)
@@ -224,6 +229,30 @@ contract VoteSystemContractTest {
 
         emit LogProxyUnvote(msg.sender, now);
         return true;
+    }
+
+
+    /**
+     * @dev User withdraw stake for voting after lock time
+     */
+    function withdrawStake() external {
+        // producer => 1; proxy => 2; voter => 3;
+        bytes32 roleKey = keccak256("user.role", msg.sender);
+        require(systemStorage.getUint(roleKey) == 3);
+        // User must unvote
+        bytes32 statusKey = keccak256("vote.status", msg.sender);
+        require(systemStorage.getUint(statusKey) == 2);
+        // After lock time
+        require(now > systemStorage.getUint(keccak256("vote.unvoteTime", msg.sender)).add(lockTimeForVote));
+
+        uint stake = systemStorage.getUint(keccak256("vote.staked", msg.sender));
+        // Delete all info
+        systemStorage.deleteUint(roleKey);
+        systemStorage.deleteUint(statusKey);
+
+        msg.sender.transfer(stake);
+
+        emit LogWithdrawStake(msg.sender, stake, now);
     }
 
 
@@ -277,7 +306,7 @@ contract VoteSystemContractTest {
      * @param weight The amount of vote weight will add or sub
      * @param flag True means add, otherwise sub
      */
-    function updateReleatedProducersVoteWeight(address[] votedProducers, address voter, uint weight, bool flag) internal {
+    function updateRelatedProducersVoteWeight(address[] votedProducers, address voter, uint weight, bool flag) internal {
         uint newWeight;
         bytes32 key;
         for(uint i = 0; i < votedProducers.length; i++) {

@@ -12,9 +12,7 @@ contract RegSystemContractTest {
     // Just for test // TODO
     uint depositForJoin = 1 ether;
     // 72 hours lock for deposit
-    uint lockTimeForDepoist = 72 * 60 * 60;
-    // 72 hours lock for vote
-    uint lockTimeForVote = 72 * 60 * 60;
+    uint lockTimeForDeposit = 72 * 60 * 60;
     // Just for test // TODO
     uint lengthOFEpoch = 4;
 
@@ -47,6 +45,8 @@ contract RegSystemContractTest {
     event LogUnregProducer(address indexed producer, uint unregTime);
 
     event LogUnregProxy(address indexed proxy, uint unregTime);
+
+    event LogWithdrawDeposit(address indexed producer, uint deposit, uint time);
 
     constructor(address systemStorageContract) public {
         require(systemStorageContract != address(0));
@@ -102,6 +102,8 @@ contract RegSystemContractTest {
         // Msg.sender is a producer
         // producer => 1; proxy => 2; voter => 3;
         require(systemStorage.getUint(keccak256("user.role", msg.sender)) == 1);
+        // producer should be active
+        require(systemStorage.getUint(keccak256("producer.status", msg.sender)) == 1);
 
         // Set producer new personal info
         systemStorage.setString(keccak256("producer.name", msg.sender), newName);
@@ -174,6 +176,32 @@ contract RegSystemContractTest {
 
         emit LogUnregProxy(msg.sender, now);
         return true;
+    }
+
+
+    /**
+     * @dev Producer withdraw deposit after lock time
+     */
+    function withdrawDeposit() external {
+        // Producer must unreg
+        bytes32 statusKey = keccak256("producer.status", msg.sender);
+        require(systemStorage.getUint(statusKey) == 2);
+        // Lock time for deposit after unreg
+        require(now > systemStorage.getUint(keccak256("producer.outTime", msg.sender)).add(lockTimeForDeposit));
+
+        // Delete all producer's info
+        systemStorage.deleteUint(keccak256("user.role", msg.sender));
+        systemStorage.deleteString(keccak256("producer.name", msg.sender));
+        systemStorage.deleteString(keccak256("producer.webUrl", msg.sender));
+        systemStorage.deleteString(keccak256("producer.p2pUrl", msg.sender));
+        systemStorage.deleteUint(statusKey);
+        // Delete deposit
+        bytes32 depositKey = keccak256("producer.deposit", msg.sender);
+        uint deposit = systemStorage.getUint(depositKey);
+        systemStorage.deleteUint(depositKey);
+        msg.sender.transfer(deposit);
+
+        emit LogWithdrawDeposit(msg.sender, deposit, now);
     }
 
 

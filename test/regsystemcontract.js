@@ -1,4 +1,5 @@
-import { assertEquals, assertBigger } from "./help";
+import assertRevert from "zeppelin-solidity/test/helpers/assertRevert";
+import { increaseTimeTo, duration } from "zeppelin-solidity/test/helpers/increaseTime"
 
 const RegSystemContractTest = artifacts.require("./RegSystemContractTest");
 const SystemContractTest = artifacts.require("./SystemContractTest");
@@ -15,7 +16,7 @@ contract("Reg System Contract", function (accounts) {
         this.SystemContractTestIns = await SystemContractTest.new();
         this.RegSystemContractTestIns = await RegSystemContractTest.new(this.SystemContractTestIns.address);
         // Set contract address(only used in test)
-        await this.SystemContractTestIns.setSystemContract(this.RegSystemContractTestIns.address);
+        await this.SystemContractTestIns.setSystemContract(0, this.RegSystemContractTestIns.address);
     })
 
 
@@ -51,6 +52,28 @@ contract("Reg System Contract", function (accounts) {
         newProducers.length.should.equal(2);
     })
 
+    it("producer can't reg twice", async function () {
+        const producer = accounts[1];
+        const name = "test"
+        const webUrl = "http://test"
+        const p2pUrl = "encode://111"
+        const deposit = web3.toWei(1, "ether")
+
+        // Can't reg twice
+        await assertRevert(this.RegSystemContractTestIns.regProducerCandidates(name, webUrl, p2pUrl, {from: producer, value: deposit}));
+    })
+
+    it("producer can't reg if amount of deposited GET is not same with default", async function () {
+        const producer = accounts[3];
+        const name = "test"
+        const webUrl = "http://test"
+        const p2pUrl = "encode://111"
+        const deposit = web3.toWei(0.5, "ether");
+
+        // Can't reg is deposit is not same with default amount(1 GET)
+        await assertRevert(this.RegSystemContractTestIns.regProducerCandidates(name, webUrl, p2pUrl, {from: producer, value: deposit}));
+    })
+
 
     it("producer can update producer's info", async function () {
         const producer = accounts[1];
@@ -77,6 +100,13 @@ contract("Reg System Contract", function (accounts) {
         log.args.proxy.should.equal(proxy);
     })
 
+    it("proxy can't reg twice", async function () {
+        const proxy = accounts[2];
+
+        // Can't reg twice
+        await assertRevert(this.RegSystemContractTestIns.regProxy({from: proxy}));
+    })
+
 
     it("producer can unreg", async function () {
         const producer = accounts[1];
@@ -88,6 +118,8 @@ contract("Reg System Contract", function (accounts) {
         log.args.producer.should.equal(producer);
 
         await this.RegSystemContractTestIns.unregProducer({from: producer2});
+        const producers = await this.RegSystemContractTestIns.getProducers();
+        producers.length.should.equal(0);
     })
 
 
@@ -129,6 +161,66 @@ contract("Reg System Contract", function (accounts) {
         inArray(finalProducers, producer5).should.equal(true);
         inArray(finalProducers, producer6).should.equal(true);
         inArray(finalProducers, producer7).should.equal(true);
+    })
+
+    it("producer can't withdraw deposit when not unreg", async function () {
+        const producer = accounts[8];
+
+        await assertRevert(this.RegSystemContractTestIns.withdrawDeposit({from: producer}));
+    })
+
+    it("producer can't withdraw deposit when not after lock time", async function () {
+        const producer = accounts[8];
+
+        const { logs } = await this.RegSystemContractTestIns.unregProducer({from: producer});
+        const log = logs.find(e => e.event === "LogUnregProducer");
+        const unregTime = log.args.unregTime;
+        const beforeLockTime = unregTime.toNumber() + duration.hours(71) + duration.minutes(58);
+        await increaseTimeTo(beforeLockTime);
+
+        await assertRevert(this.RegSystemContractTestIns.withdrawDeposit({from: producer}));
+    })
+
+
+    it("producer can withdraw deposit after lock time", async function () {
+        const producer = accounts[9];
+        const deposit = web3.toWei(1, "ether");
+
+        // Unreg and increase time to when after lock time
+        const { logs } = await this.RegSystemContractTestIns.unregProducer({from: producer});
+        const log = logs.find(e => e.event === "LogUnregProducer");
+        const unregTime = log.args.unregTime;
+        const afterLockTime = unregTime.toNumber() + duration.hours(72) + duration.minutes(2);
+        await increaseTimeTo(afterLockTime);
+
+        const logInfo = await this.RegSystemContractTestIns.withdrawDeposit({from: producer});
+        const withdrawLog = logInfo.logs.find(e => e.event === "LogWithdrawDeposit");
+        should.exist(withdrawLog);
+        withdrawLog.args.producer.should.equal(producer);
+        withdrawLog.args.deposit.should.be.bignumber.equal(deposit);
+    })
+
+
+    it("producer can reg again after withdraw deposit", async function () {
+        const producer = accounts[9];
+        const name = "test"
+        const webUrl = "http://test"
+        const p2pUrl = "encode://111"
+        const deposit = web3.toWei(1, "ether")
+
+        // Reg producer
+        const { logs } = await this.RegSystemContractTestIns.regProducerCandidates(name, webUrl, p2pUrl, {from: producer, value: deposit});
+        const log = logs.find(e => e.event === "LogRegProducerCandidates");
+        should.exist(log);
+        log.args.producer.should.equal(producer);
+        log.args.name.should.equal(name);
+        log.args.webUrl.should.equal(webUrl);
+        log.args.p2pUrl.should.equal(p2pUrl);
+        log.args.deposit.should.be.bignumber.equal(deposit);
+
+        // All other's info should be updated.
+        const voteWeight = await this.RegSystemContractTestIns.getProducer(producer);
+        voteWeight.should.be.bignumber.equal(new BigNumber(0));
     })
 
 

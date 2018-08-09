@@ -1,7 +1,9 @@
+import assertRevert from "zeppelin-solidity/test/helpers/assertRevert";
+import { increaseTimeTo, duration } from "zeppelin-solidity/test/helpers/increaseTime"
+
 const SystemContractTest = artifacts.require("./SystemContractTest");
 const VoteSystemContractTest = artifacts.require("./VoteSystemContractTest");
 const RegSystemContractTest = artifacts.require("./RegSystemContractTest");
-
 
 const BigNumber = web3.BigNumber;
 const should = require('chai')
@@ -11,23 +13,28 @@ const should = require('chai')
 
 const Address0 = "0x0000000000000000000000000000000000000000";
 
+var unvoteTime;
+
 contract("Vote system contract", function (accounts) {
 
     before(async function () {
         this.SystemContractTestIns = await SystemContractTest.new();
         this.VoteSystemContractTestIns = await VoteSystemContractTest.new(this.SystemContractTestIns.address);
         this.RegSystemContractTestIns = await RegSystemContractTest.new(this.SystemContractTestIns.address);
-        await this.SystemContractTestIns.setSystemContract(this.VoteSystemContractTestIns.address);
-        await this.SystemContractTestIns.setSystemContract(this.RegSystemContractTestIns.address);
+        await this.SystemContractTestIns.setSystemContract(1, this.VoteSystemContractTestIns.address);
+        await this.SystemContractTestIns.setSystemContract(0, this.RegSystemContractTestIns.address);
         await RegProducers(this.RegSystemContractTestIns, accounts);
     })
 
-    it("user can vote for producer", async function () {
+    it("user can vote for producers", async function () {
         const producer = accounts[1];
+        const producer2 = accounts[2];
         const user = accounts[4];
         const deposit = web3.toWei(2, "ether");
         var producers = [];
         producers.push(producer);
+        producers.push(producer2);
+        producers.sort();
 
         const votedWeightBefore = await this.RegSystemContractTestIns.getProducer(producer);
 
@@ -36,12 +43,63 @@ contract("Vote system contract", function (accounts) {
         should.exist(log);
         log.args.voter.should.equal(user);
         log.args.proxy.should.equal(Address0);
-        log.args.producers[0].should.equal(producer);
+        log.args.producers[0].should.equal(producers[0]);
+        log.args.producers[1].should.equal(producers[1]);
         log.args.staked.should.be.bignumber.equal(deposit);
 
         // check for producer's vote weight
         const votedWeightAfter = await this.RegSystemContractTestIns.getProducer(producer);
         votedWeightAfter.sub(votedWeightBefore).should.be.bignumber.equal(calculateWeight(deposit));
+    })
+
+    it("producers list should be sorted", async function () {
+        const producer0 = accounts[1];
+        const producer1 = accounts[2];
+        var producers = [];
+        producers.push(producer0);
+        producers.push(producer1);
+
+        // Make producers list unsorted
+        producers.sort();
+        var tmp = producers[0];
+        producers[0] = producers[1];
+        producers[1] = tmp;
+
+        const user = accounts[5];
+        const deposit = web3.toWei(2, "ether");
+        await assertRevert(this.VoteSystemContractTestIns.userVote(0, producers, {from: user, value: deposit}));
+    })
+
+    it("producers list should be validated(all active producers)", async function () {
+        const producer0 = accounts[1];
+        const producer1 = accounts[2];
+        const producer2 = accounts[3];
+
+        var producers = [];
+        producers.push(producer0);
+        producers.push(producer1);
+        producers.push(producer2);
+        producers.sort();
+
+        const user = accounts[5];
+        const deposit = web3.toWei(2, "ether");
+        await assertRevert(this.VoteSystemContractTestIns.userVote(0, producers, {from: user, value: deposit}));
+    })
+
+    it("producers list item should be unique", async function () {
+        const producer0 = accounts[1];
+        const producer1 = accounts[2];
+        const producer2 = accounts[1];
+
+        var producers = [];
+        producers.push(producer0);
+        producers.push(producer1);
+        producers.push(producer2);
+        producers.sort();
+
+        const user = accounts[5];
+        const deposit = web3.toWei(2, "ether");
+        await assertRevert(this.VoteSystemContractTestIns.userVote(0, producers, {from: user, value: deposit}));
     })
 
     it("user can vote for proxy", async function () {
@@ -97,7 +155,7 @@ contract("Vote system contract", function (accounts) {
 
         // Check for weight
         const producer0Weight = web3.toWei(5, "ether");
-        const producer1Weight = new BigNumber(0);
+        const producer1Weight = web3.toWei(2, "ether");
         producersInfo[1][0].should.be.bignumber.equal(producer0Weight);
         producersInfo[1][1].should.be.bignumber.equal(producer1Weight);
 
@@ -115,12 +173,28 @@ contract("Vote system contract", function (accounts) {
         const { logs } = await this.VoteSystemContractTestIns.userUnvote({from: user});
         const log = logs.find(e => e.event === "LogUserUnvote");
         log.args.user.should.equal(user);
+        unvoteTime = log.args.unvoteTime.toNumber();
 
         // This voter vote for producer, so just check weight of producers
         // Use const weight
         const userWeight = web3.toWei(2, "ether");
         const votedWeightAfter = await this.RegSystemContractTestIns.getProducer(producer);
         votedWeightBefore.sub(votedWeightAfter).should.be.bignumber.equal(userWeight);
+    })
+
+
+    it("user can withdraw stake after lock time", async function () {
+        const user = accounts[4];
+        const deposit = web3.toWei(2, "ether");
+
+        // Increase time after lock time
+        const afterLockTime = unvoteTime + duration.hours(72) + duration.minutes(1);
+        await increaseTimeTo(afterLockTime);
+
+        const { logs } = await this.VoteSystemContractTestIns.withdrawStake({from: user});
+        const log = logs.find(e => e.event === "LogWithdrawStake");
+        log.args.user.should.equal(user);
+        log.args.stake.should.be.bignumber.equal(deposit);
     })
 
     it("proxy can unvote", async function () {
