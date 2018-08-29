@@ -9,42 +9,63 @@ import "./ProducersOpInterface.sol";
 // convenience for test.
 contract SystemContractTest is SystemStorage, ProducersOpInterface {
 
-    uint proposalWaitTime = 1 weeks;
-
     Proposal proposal;
 
-    // Just for convenience to get all producers
+    // Just for convenience to get all active producers
     address[] producers;
 
-    // Proposal to update vote or reg system contract
+    uint proposalID = 0;
+
+    enum ProposalType { Default, UpgradeContract, UpdateConfig, VoteOutProducer}
+
+    // Proposal to update or upgrade system contract
     struct Proposal {
+        // ID of proposal
+        uint id;
+
+        // Active or dead
+        bool status;
+
         // proposer
         address proposer;
 
         // Time proposing
         uint proposeTime;
 
-        // 0 => reg system contract; 1 => vote system contract
-        uint contractType;
+        // Address of malicious producer try to vote out
+        address maliciousBP;
 
-        // Address of new system contract
-        address newContractAddress;
+        // Key array of proposal
+        bytes32[] keys;
 
-        // Approve for upgrading system contract
+        // Value array of proposal
+        uint[] values;
+
+        // Flag indicates type of proposal
+        ProposalType flag;
+
+        // Approve for proposal
         uint approveVoteCount;
 
-        // Check a producer voted or not
-        mapping(address => bool) voted;
+        // Disapprove for proposal
+        uint disapproveCount;
 
-        // Array of all voters
-        address[] voters;
+        // Check a producer vote for this proposal or not
+        mapping(uint => mapping(address => bool)) voted;
     }
 
-    event LogPropose(address indexed proposer, uint contractType, address newContract);
+    event LogPropose(address indexed proposer, bytes32[] keys, uint[] values, address maliciousBP, uint flag);
 
-    event LogVote(address indexed voter, bool auth);
+    event LogVote(uint proposalID, address indexed voter, bool auth);
 
-    event LogUpdateSystemContract(uint contractType, address originalContract, address newContract);
+    event LogApproveProposal(uint proposalID);
+
+    // Mapping key is not necessary since one can not get original name from key
+    event LogUpgradeSystemContract(uint[] newAddresses);
+
+    event LogUpdateConfig(uint[] values);
+
+    event LogVoteOutMaliciousBP(address bp);
 
     // Can only be called by active producer
     modifier onlyActiveProducer() {
@@ -52,32 +73,65 @@ contract SystemContractTest is SystemStorage, ProducersOpInterface {
         _;
     }
 
+    // Can only be called by validate type
+    modifier onlyValidateType(ProposalType flag) {
+        require(flag == ProposalType.UpgradeContract || flag == ProposalType.UpdateConfig || flag == ProposalType.VoteOutProducer);
+        _;
+    }
+
+    // TODO test purpose
+    constructor() public {
+        // Init variables
+        uintStorage[keccak256("system.proposalPeriod")] = 1 weeks;
+        uintStorage[keccak256("system.stakeForVote")] = 1 ether;
+        uintStorage[keccak256("system.lockTimeForStake")] = 72 * 60 * 60;
+
+        uintStorage[keccak256("system.depositForProducer")] = 1 ether;
+        uintStorage[keccak256("system.lockTimeForDeposit")] = 72 * 60 * 60;
+        uintStorage[keccak256("system.producerSize")] = 4;
+    }
 
     /**
-     * @dev Producer propose a new proposal for upgrading system contract
+     * @dev // TODO just for test
      */
-    function propose(uint contractType, address newSystemContract) public onlyActiveProducer {
-        require(newSystemContract != address(0));
-        require(contractType == 0 || contractType == 1);
-        // It's ok when no proposal currently. proposeTime will be zero
-        require(proposalWaitTime + now > proposal.proposeTime);
+    function setSystemContract(string contractName, address systemContract) public returns(bool) {
+        boolStorage[keccak256("system.address", systemContract)] = true;
+        addressStorage[keccak256(contractName)] = systemContract;
+    }
+
+
+    /**
+     * @dev Producer propose a new proposal for upgrading system contract or update/add
+     * @dev system configs
+     * @dev Upgrade system contract, keys: contract name, values: addresses converted from uint
+     * @dev Update system config, keys: config variables name, values: uint values
+     * @dev Flag indicates update config or upgrade contract
+     */
+    function propose(bytes32[] keys, uint[] values, address maliciousBP, ProposalType flag) public onlyValidateType(flag) onlyActiveProducer {
+        // Length of keys and values should be same
+        require(keys.length == values.length);
+        // 30 variables is enough for contract update
+        require(keys.length < 30);
+        uint proposalPeriod = uintStorage[keccak256("system.proposalPeriod")];
+        // ProposeTime will be zero when no proposal currently.
+        require(now > proposal.proposeTime + proposalPeriod || proposal.status == false);
 
         proposal.proposer = msg.sender;
         proposal.proposeTime = now;
-        proposal.contractType = contractType;
-        proposal.newContractAddress = newSystemContract;
         // Count vote for proposer
         proposal.approveVoteCount = 1;
+        proposal.disapproveCount = 0;
+        // Set id
+        proposalID = proposalID + 1;
+        proposal.id = proposalID;
+        proposal.status = true;
+        // None check for variables which should be done by community
+        proposal.keys = keys;
+        proposal.values = values;
+        proposal.flag = flag;
+        proposal.maliciousBP = maliciousBP;
 
-        // Reset all vote flag
-        address[] memory voters = proposal.voters;
-        for (uint i = 0; i < voters.length; i++) {
-            proposal.voted[voters[i]] = false;
-        }
-        // Delete all original voters
-        delete proposal.voters;
-
-        emit LogPropose(msg.sender, contractType, newSystemContract);
+        emit LogPropose(msg.sender, keys, values, maliciousBP, uint(flag));
     }
 
 
@@ -89,38 +143,31 @@ contract SystemContractTest is SystemStorage, ProducersOpInterface {
         // Also reject vote if there is not proposal currently(proposer = address(0)
         require(msg.sender != proposal.proposer);
         // Producer haven't vote for this before(can not update vote)
-        require(proposal.voted[msg.sender] == false);
+        require(proposal.voted[proposal.id][msg.sender] == false);
 
-        proposal.voted[msg.sender] = true;
-        proposal.voters.push(msg.sender);
-        // Only record approbation for this proposal
+        proposal.voted[proposal.id][msg.sender] = true;
+        // Record vote
         if (auth) {
             proposal.approveVoteCount = proposal.approveVoteCount + 1;
 
             uint leastApproveCount = producers.length * 2 / 3 + 1;
-            if (proposal.approveVoteCount >= leastApproveCount) {
+            if (proposal.approveVoteCount >= leastApproveCount && proposal.status == true) {
+                updateContract();
                 // Make next proposal accessible
-                proposal.proposeTime = 0;
-                updateSystemContract(proposal.contractType, proposal.newContractAddress);
+                proposal.status = false;
+            }
+        } else {
+            proposal.disapproveCount = proposal.disapproveCount + 1;
+            uint leastDisapproveCount = producers.length / 3 + 1;
+            if (proposal.disapproveCount >= leastDisapproveCount) {
+                // Do nothing but make next proposal accessible
+                proposal.status = false;
             }
         }
 
-        emit LogVote(msg.sender, auth);
+        emit LogVote(proposal.id, msg.sender, auth);
     }
 
-
-    /**
-     * @dev // TODO just for test, will remove later
-     */
-    function setSystemContract(uint contractType, address systemContract) public returns(bool) {
-        boolStorage[keccak256("system.address", systemContract)] = true;
-        if (contractType == 0) {
-            addressStorage[keccak256("system.regSystemContract")] = systemContract;
-        }
-        if (contractType == 1) {
-            addressStorage[keccak256("system.voteSystemContract")] = systemContract;
-        }
-    }
 
     function addProducer(address producer) public onlyCurrentSystemContract {
         // Record index of producer: actualIndex + 1
@@ -133,6 +180,77 @@ contract SystemContractTest is SystemStorage, ProducersOpInterface {
      * @dev Array's length
      */
     function removeProducer(address producer) public onlyCurrentSystemContract {
+        removeProducerInternal(producer);
+    }
+
+    function getProducers() external view returns(address[]) {
+        return producers;
+    }
+
+    function getProducersLength() external view returns(uint) {
+        return producers.length;
+    }
+
+    function getSystemContract(string contractName) public view returns(address) {
+        return addressStorage[keccak256(contractName)];
+    }
+
+
+    /**
+     * @dev Update contract related info based on current proposal
+     */
+    function updateContract() internal {
+        uint i = 0;
+        // Update reg system contract
+        if (proposal.flag == ProposalType.UpgradeContract) {
+            // Update system contract address
+            for (; i < proposal.keys.length; i++) {
+                address originalContract = addressStorage[proposal.keys[i]];
+                boolStorage[keccak256("system.address", originalContract)] = false;
+                address newAddress= address(proposal.values[i]);
+                if (newAddress == address(0)) {
+                    continue;
+                }
+                boolStorage[keccak256("system.address", newAddress)] = true;
+                addressStorage[proposal.keys[i]] = newAddress;
+            }
+
+            emit LogUpgradeSystemContract(proposal.values);
+            return;
+        }
+
+        if (proposal.flag == ProposalType.UpdateConfig) {
+            // Update contract config variables
+            for (i = 0; i < proposal.keys.length; i++) {
+                // None check
+                uintStorage[proposal.keys[i]] = proposal.values[i];
+            }
+
+            emit LogUpdateConfig(proposal.values);
+            return;
+        }
+
+        if (proposal.flag == ProposalType.VoteOutProducer) {
+            uint status = uintStorage[keccak256("producer.status", proposal.maliciousBP)];
+            if (status == 1) {
+                removeProducerInternal(proposal.maliciousBP);
+            }
+            // Set status to beenVotedOut, one can not do nothing after
+            uintStorage[keccak256("producer.status", proposal.maliciousBP)] = 3;
+            // TODO add deposit of maliciousBP to other bp
+
+            emit LogVoteOutMaliciousBP(proposal.maliciousBP);
+            return ;
+        }
+
+        revert();
+    }
+
+
+    /**
+     * @dev Remove producer from array
+     */
+    function removeProducerInternal(address producer) internal {
         require(producers.length > 0);
         uint index = uintStorage[keccak256("producer.index", producer)];
         uint lastIndex = producers.length - 1;
@@ -151,48 +269,5 @@ contract SystemContractTest is SystemStorage, ProducersOpInterface {
         uintStorage[keccak256("producer.index", producers[lastIndex])] = index;
         // Delete last item
         producers.length--;
-    }
-
-    function getProducers() external view returns(address[]) {
-        return producers;
-    }
-
-    function getProducersLength() external view returns(uint) {
-        return producers.length;
-    }
-
-    function getVoteSystemContract() public view returns(address) {
-        return addressStorage[keccak256("system.voteSystemContract")];
-    }
-
-    function getRegSystemContract() public view returns(address) {
-        return addressStorage[keccak256("system.regSystemContract")];
-    }
-
-
-    /**
-     * @dev Set new system contract
-     */
-    function updateSystemContract(uint contractType, address newContractAddress) internal {
-        // Update reg system contract
-        if (contractType == 0) {
-            address originalRegContract = addressStorage[keccak256("system.regSystemContract")];
-            boolStorage[keccak256("system.address", originalRegContract)] = false;
-            boolStorage[keccak256("system.address", newContractAddress)] = true;
-            addressStorage[keccak256("system.regSystemContract")] = newContractAddress;
-            emit LogUpdateSystemContract(contractType, originalRegContract, newContractAddress);
-            return;
-        }
-
-        if (contractType == 1) {
-            address originalVoteContract = addressStorage[keccak256("system.voteSystemContract")];
-            boolStorage[keccak256("system.address", originalVoteContract)] = false;
-            boolStorage[keccak256("ssystem.address", newContractAddress)] = true;
-            addressStorage[keccak256("system.voteSystemContract")] = newContractAddress;
-            emit LogUpdateSystemContract(contractType, originalVoteContract, newContractAddress);
-            return;
-        }
-
-        revert();
     }
 }

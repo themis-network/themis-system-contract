@@ -9,21 +9,11 @@ contract RegSystemContractTest {
 
     using SafeMath for uint;
 
-    // Just for test // TODO
-    uint depositForJoin = 1 ether;
-    // 72 hours lock for deposit
-    uint lockTimeForDeposit = 72 * 60 * 60;
-    // Just for test // TODO
-    uint lengthOFEpoch = 4;
-
     // 00:00:00 1/1/3000 for init out time
-    uint initOutTime = 32503651200;
+    uint constant public initOutTime = 32503651200;
 
-    StorageInterface systemStorage = StorageInterface(0);
-    ProducersOpInterface producerOp = ProducersOpInterface(0);
-
-    // Tmp record index of unreg producers
-    uint[] unregIndex;
+    StorageInterface public systemStorage = StorageInterface(0);
+    ProducersOpInterface public producerOp = ProducersOpInterface(0);
 
     event LogRegProducerCandidates(
         address indexed producer,
@@ -34,7 +24,7 @@ contract RegSystemContractTest {
     );
 
     event LogUpdateProducerInfo(
-        address producer,
+        address indexed producer,
         string newName,
         string newWebUrl,
         string newP2PUrl
@@ -47,6 +37,7 @@ contract RegSystemContractTest {
     event LogUnregProxy(address indexed proxy, uint unregTime);
 
     event LogWithdrawDeposit(address indexed producer, uint deposit, uint time);
+
 
     constructor(address systemStorageContract) public {
         require(systemStorageContract != address(0));
@@ -67,7 +58,8 @@ contract RegSystemContractTest {
         // producer => 1; proxy => 2; voter => 3;
         require(systemStorage.getUint(keccak256("user.role", producer)) == 0);
         // User should send default GET coin to be a producer
-        require(depositForJoin == msg.value);
+        uint depositForProducer = systemStorage.getUint(keccak256("system.depositForProducer"));
+        require(depositForProducer == msg.value);
         // TODO add length limit of producers
 
         // Set producer role
@@ -187,6 +179,7 @@ contract RegSystemContractTest {
         bytes32 statusKey = keccak256("producer.status", msg.sender);
         require(systemStorage.getUint(statusKey) == 2);
         // Lock time for deposit after unreg
+        uint lockTimeForDeposit = systemStorage.getUint(keccak256("system.lockTimeForDeposit"));
         require(now > systemStorage.getUint(keccak256("producer.outTime", msg.sender)).add(lockTimeForDeposit));
 
         // Delete all producer's info
@@ -237,6 +230,6 @@ contract RegSystemContractTest {
             }
         }
 
-        return (tmpProducers, votedWeight, lengthOFEpoch);
+        return (tmpProducers, votedWeight, systemStorage.getUint(keccak256("system.producerSize")));
     }
 }

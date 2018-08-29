@@ -21,8 +21,8 @@ contract("Vote system contract", function (accounts) {
         this.SystemContractTestIns = await SystemContractTest.new();
         this.VoteSystemContractTestIns = await VoteSystemContractTest.new(this.SystemContractTestIns.address);
         this.RegSystemContractTestIns = await RegSystemContractTest.new(this.SystemContractTestIns.address);
-        await this.SystemContractTestIns.setSystemContract(1, this.VoteSystemContractTestIns.address);
-        await this.SystemContractTestIns.setSystemContract(0, this.RegSystemContractTestIns.address);
+        await this.SystemContractTestIns.setSystemContract("system.voteContract", this.VoteSystemContractTestIns.address);
+        await this.SystemContractTestIns.setSystemContract("system.regContract", this.RegSystemContractTestIns.address);
         await RegProducers(this.RegSystemContractTestIns, accounts);
     })
 

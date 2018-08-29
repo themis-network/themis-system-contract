@@ -16,7 +16,7 @@ contract("Reg System Contract", function (accounts) {
         this.SystemContractTestIns = await SystemContractTest.new();
         this.RegSystemContractTestIns = await RegSystemContractTest.new(this.SystemContractTestIns.address);
         // Set contract address(only used in test)
-        await this.SystemContractTestIns.setSystemContract(0, this.RegSystemContractTestIns.address);
+        await this.SystemContractTestIns.setSystemContract("system.regContract", this.RegSystemContractTestIns.address);
     })
 
 

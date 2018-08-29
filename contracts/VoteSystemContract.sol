@@ -8,15 +8,9 @@ contract VoteSystemContract {
     using SafeMath for uint256;
 
     // 00:00:00 1/1/3000 for init out time
-    uint initOutTime = 32503651200;
+    uint constant public initOutTime = 32503651200;
 
-    // The GET user should pay for voting
-    uint leastDepositForVote = 1 ether;
-
-    // 72 hours lock for vote
-    uint lockTimeForVote = 72 * 60 * 60;
-
-    StorageInterface systemStorage = StorageInterface(0);
+    StorageInterface public systemStorage = StorageInterface(0);
 
     event LogUserVote(
         address indexed voter,
@@ -44,7 +38,8 @@ contract VoteSystemContract {
         bytes32 roleKey = keccak256("user.role", msg.sender);
         require(systemStorage.getUint(roleKey) == 0);
         // User should stake GET for vote at first time
-        require(msg.value >= leastDepositForVote);
+        uint stakeForVote = systemStorage.getUint(keccak256("system.stakeForVote"));
+        require(msg.value >= stakeForVote);
         // Producer/Proxy should have reg and be active
         if (proxy != address(0)) {
             // Check proxy
@@ -237,7 +232,8 @@ contract VoteSystemContract {
         bytes32 statusKey = keccak256("vote.status", msg.sender);
         require(systemStorage.getUint(statusKey) == 2);
         // After lock time
-        require(now > systemStorage.getUint(keccak256("vote.unvoteTime", msg.sender)).add(lockTimeForVote));
+        uint lockTimeForStake = systemStorage.getUint(keccak256("system.lockTimeForStake"));
+        require(now > systemStorage.getUint(keccak256("vote.unvoteTime", msg.sender)).add(lockTimeForStake));
 
         uint stake = systemStorage.getUint(keccak256("vote.staked", msg.sender));
         // Delete all info

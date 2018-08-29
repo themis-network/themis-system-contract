@@ -150,4 +150,9 @@ contract SystemStorage is StorageInterface {
         delete intStorage[key];
         return true;
     }
+
+    // @param contractAddr Address of contract want to check
+    function isSystemContract(address contractAddr) public view returns(bool) {
+        return boolStorage[keccak256("system.address", contractAddr)];
+    }
 }
