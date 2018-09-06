@@ -28,6 +28,12 @@ contract VoteSystemContractTest {
     event LogWithdrawStake(address indexed user, uint stake, uint time);
 
 
+    modifier onlyMainContract() {
+        require(msg.sender == address(systemStorage));
+        _;
+    }
+
+
     constructor(address mainStorage) public {
         require(mainStorage != address(0));
         systemStorage = StorageInterface(mainStorage);
@@ -250,6 +256,16 @@ contract VoteSystemContractTest {
         msg.sender.transfer(stake);
 
         emit LogWithdrawStake(msg.sender, stake, now);
+    }
+
+
+    /**
+     * @dev Main contract will call this to destruct current contract and send get coin
+     * @dev to new contract.
+     */
+    function destructSelf(address newContract) public onlyMainContract returns(bool) {
+        selfdestruct(newContract);
+        return true;
     }
 
 

@@ -45,6 +45,14 @@ contract("Upgradeable contract", function (accounts) {
         const log = logs.find(e => e.event === "LogPropose");
         should.exist(log);
         log.args.proposer.should.equal(producer);
+
+        const proposal = await this.SystemContractTestIns.getProposal();
+        proposal[1].should.equal(true);
+        proposal[2].should.equal(producer);
+        proposal[4].should.equal("0x0000000000000000000000000000000000000000");
+        proposal[7].should.be.bignumber.equal(new BigNumber(upgradeContract));
+        proposal[8].should.be.bignumber.equal(new BigNumber(1));
+        proposal[9].should.be.bignumber.equal(new BigNumber(0));
     })
 
     it("only active producer can vote for proposal", async function () {
@@ -75,9 +83,18 @@ contract("Upgradeable contract", function (accounts) {
         await assertRevert(this.SystemContractTestIns.propose(keys, value, 0, upgradeContract, {from: producer}));
     })
 
-    it("can update system contract address when vote reach length*2/3 + 1", async function () {
+    it("only main contract can destruct system contract", async function () {
+        // Use a test account to call destruct func
+        const acc = accounts[3]
+        const newAddress = accounts[4]
+        await assertRevert(this.RegSystemContractTestIns.destructSelf(newAddress), {from: acc})
+    })
+
+    it("can update system contract address/send get coin to new contract when vote reach length*2/3 + 1", async function () {
         const producer2 = accounts[3];
         const auth = true;
+
+        const oriBalance = await web3.eth.getBalance(this.RegSystemContractTestIns.address);
 
         // Update system contract if votes bigger than 2/3
         const { logs } = await this.SystemContractTestIns.vote(auth, {from: producer2});
@@ -86,16 +103,19 @@ contract("Upgradeable contract", function (accounts) {
 
         const updatedContract = await this.SystemContractTestIns.getSystemContract(regContractName);
         updatedContract.should.equal(this.RegSystemContractTestIns2.address);
+
+        const afterBalance = await web3.eth.getBalance(this.RegSystemContractTestIns.address);
+        afterBalance.should.be.bignumber.equal(new BigNumber(0));
+
+        const newBalance = await web3.eth.getBalance(this.RegSystemContractTestIns2.address);
+        newBalance.should.be.bignumber.equal(oriBalance);
     })
 
     it("original system can not use", async function () {
-        // Original system contract will be disabled and can not reg producer
-        const producer4 = accounts[5];
-        const name = "test"
-        const webUrl = "http://test"
-        const p2pUrl = "encode://111"
-        const deposit = web3.toWei(1, "ether")
-        await assertRevert(this.RegSystemContractTestIns.regProducerCandidates(name, webUrl, p2pUrl, {from: producer4, value: deposit}));
+        // Original system contract will be destructed
+        // Original code should be deleted
+        const code = web3.eth.getCode(this.RegSystemContractTestIns.address);
+        code.should.equal("0x0");
     })
 
     it("can propose/pass update config once original passed", async function () {

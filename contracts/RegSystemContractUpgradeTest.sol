@@ -5,15 +5,15 @@ import "./libraries/SafeMath.sol";
 import "./ProducersOpInterface.sol";
 
 //
-contract RegSystemContractTest {
+contract RegSystemContractUpgradeTest {
 
     using SafeMath for uint;
 
     // 00:00:00 1/1/3000 for init out time
     uint constant public initOutTime = 32503651200;
 
-    StorageInterface public systemStorage = StorageInterface(0);
-    ProducersOpInterface public producerOp = ProducersOpInterface(0);
+    StorageInterface public systemStorage = StorageInterface(9);
+    ProducersOpInterface public producerOp = ProducersOpInterface(9);
 
     event LogRegProducerCandidates(
         address indexed producer,
@@ -37,18 +37,6 @@ contract RegSystemContractTest {
     event LogUnregProxy(address indexed proxy, uint unregTime);
 
     event LogWithdrawDeposit(address indexed producer, uint deposit, uint time);
-
-
-    modifier onlyMainContract() {
-        require(msg.sender == address(systemStorage));
-        _;
-    }
-
-    constructor(address systemStorageContract) public {
-        require(systemStorageContract != address(0));
-        systemStorage = StorageInterface(systemStorageContract);
-        producerOp = ProducersOpInterface(systemStorageContract);
-    }
 
 
     /**
@@ -204,16 +192,6 @@ contract RegSystemContractTest {
 
 
     /**
-     * @dev Main contract will call this to destruct current contract and send get coin
-     * @dev to new contract.
-     */
-    function destructSelf(address newContract) public onlyMainContract returns(bool) {
-        selfdestruct(newContract);
-        return true;
-    }
-
-
-    /**
      * @dev Get producer's info(return voted weight now only)
      * @dev Don't validate producer
      */
@@ -248,3 +226,4 @@ contract RegSystemContractTest {
         return (tmpProducers, votedWeight, systemStorage.getUint(keccak256("system.producerSize")));
     }
 }
+

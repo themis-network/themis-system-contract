@@ -27,6 +27,13 @@ contract VoteSystemContract {
 
     event LogWithdrawStake(address indexed user, uint stake, uint time);
 
+
+    modifier onlyMainContract() {
+        require(msg.sender == address(systemStorage));
+        _;
+    }
+
+
     /**
      * @dev User vote for producer or proxy, if proxy is set, the producer's address will be ignored
      * @param proxy Proxy user want to vote for
@@ -243,6 +250,16 @@ contract VoteSystemContract {
         msg.sender.transfer(stake);
 
         emit LogWithdrawStake(msg.sender, stake, now);
+    }
+
+
+    /**
+     * @dev Main contract will call this to destruct current contract and send get coin
+     * @dev to new contract.
+     */
+    function destructSelf(address newContract) public onlyMainContract returns(bool) {
+        selfdestruct(newContract);
+        return true;
     }
 
 

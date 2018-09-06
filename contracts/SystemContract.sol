@@ -2,7 +2,7 @@ pragma solidity ^0.4.24;
 
 import "./SystemStorage.sol";
 import "./ProducersOpInterface.sol";
-
+import "./DestructInterface.sol";
 
 contract SystemContract is SystemStorage, ProducersOpInterface {
 
@@ -172,6 +172,33 @@ contract SystemContract is SystemStorage, ProducersOpInterface {
         return addressStorage[keccak256(contractName)];
     }
 
+    function getProposal() public view returns(
+        uint,
+        bool,
+        address,
+        uint,
+        address,
+        bytes32[],
+        uint[],
+        ProposalType,
+        uint,
+        uint
+    )
+    {
+        return (
+            proposal.id,
+            proposal.status,
+            proposal.proposer,
+            proposal.proposeTime,
+            proposal.maliciousBP,
+            proposal.keys,
+            proposal.values,
+            proposal.flag,
+            proposal.approveVoteCount,
+            proposal.disapproveCount
+        );
+    }
+
 
     /**
      * @dev Update contract related info based on current proposal
@@ -187,6 +214,10 @@ contract SystemContract is SystemStorage, ProducersOpInterface {
                 address newAddress= address(proposal.values[i]);
                 if (newAddress == address(0)) {
                     continue;
+                }
+                // Destruct original contract and send get to system new contract
+                if (originalContract != address(0)) {
+                    DestructInterface(originalContract).destructSelf(newAddress);
                 }
                 boolStorage[keccak256("system.address", newAddress)] = true;
                 addressStorage[proposal.keys[i]] = newAddress;

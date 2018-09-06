@@ -39,6 +39,12 @@ contract RegSystemContract {
     event LogWithdrawDeposit(address indexed producer, uint deposit, uint time);
 
 
+    modifier onlyMainContract() {
+        require(msg.sender == address(systemStorage));
+        _;
+    }
+
+
     /**
      * @dev User send default amount of GET coin to reg producer candidates.
      * @param name Name of producer
@@ -188,6 +194,16 @@ contract RegSystemContract {
         msg.sender.transfer(deposit);
 
         emit LogWithdrawDeposit(msg.sender, deposit, now);
+    }
+
+
+    /**
+     * @dev Main contract will call this to destruct current contract and send get coin
+     * @dev to new contract.
+     */
+    function destructSelf(address newContract) public onlyMainContract returns(bool) {
+        selfdestruct(newContract);
+        return true;
     }
 
 
