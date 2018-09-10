@@ -169,7 +169,7 @@ contract SystemContract is SystemStorage, ProducersOpInterface {
 
 
     function addProducer(address producer) public onlyCurrentSystemContract returns(bool) {
-        require(producers.length < uintStorage[keccak256("system.maxProducers")]);
+        require(producers.length < uintStorage[keccak256("system.maxProducerSize")]);
         // Record index of producer: actualIndex + 1
         uintStorage[keccak256("producer.index", producer)] = producers.length;
         producers.push(producer);
@@ -210,16 +210,16 @@ contract SystemContract is SystemStorage, ProducersOpInterface {
     )
     {
         return (
-        proposal.id,
-        proposal.status,
-        proposal.proposer,
-        proposal.proposeTime,
-        proposal.maliciousBP,
-        proposal.keys,
-        proposal.values,
-        proposal.flag,
-        proposal.approveVoteCount,
-        proposal.disapproveCount
+            proposal.id,
+            proposal.status,
+            proposal.proposer,
+            proposal.proposeTime,
+            proposal.maliciousBP,
+            proposal.keys,
+            proposal.values,
+            proposal.flag,
+            proposal.approveVoteCount,
+            proposal.disapproveCount
         );
     }
 
