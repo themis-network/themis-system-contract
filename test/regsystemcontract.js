@@ -36,6 +36,8 @@ contract("Reg System Contract", function (accounts) {
         log.args.webUrl.should.equal(webUrl);
         log.args.p2pUrl.should.equal(p2pUrl);
         log.args.deposit.should.be.bignumber.equal(deposit);
+        const voteWeight = await this.RegSystemContractTestIns.getProducer(producer);
+        voteWeight.should.be.bignumber.equal(deposit);
 
         const producer2 = accounts[0];
         const logs2 = await this.RegSystemContractTestIns.regProducerCandidates(name, webUrl, p2pUrl, {from: producer2, value: deposit});
@@ -63,14 +65,14 @@ contract("Reg System Contract", function (accounts) {
         await assertRevert(this.RegSystemContractTestIns.regProducerCandidates(name, webUrl, p2pUrl, {from: producer, value: deposit}));
     })
 
-    it("producer can't reg if amount of deposited GET is not same with default", async function () {
+    it("producer can't reg if amount of deposited GET is less than default", async function () {
         const producer = accounts[3];
         const name = "test"
         const webUrl = "http://test"
         const p2pUrl = "encode://111"
         const deposit = web3.toWei(0.5, "ether");
 
-        // Can't reg is deposit is not same with default amount(1 GET)
+        // Can't reg is deposit is less than default amount(1 GET)
         await assertRevert(this.RegSystemContractTestIns.regProducerCandidates(name, webUrl, p2pUrl, {from: producer, value: deposit}));
     })
 
@@ -198,6 +200,7 @@ contract("Reg System Contract", function (accounts) {
         should.exist(withdrawLog);
         withdrawLog.args.producer.should.equal(producer);
         withdrawLog.args.deposit.should.be.bignumber.equal(deposit);
+        withdrawLog.args.rewards.should.be.bignumber.equal(new BigNumber(0));
     })
 
 
@@ -220,7 +223,7 @@ contract("Reg System Contract", function (accounts) {
 
         // All other's info should be updated.
         const voteWeight = await this.RegSystemContractTestIns.getProducer(producer);
-        voteWeight.should.be.bignumber.equal(new BigNumber(0));
+        voteWeight.should.be.bignumber.equal(deposit);
     })
 
 

@@ -4,7 +4,7 @@ import "./StorageInterface.sol";
 import "./libraries/SafeMath.sol";
 import "./ProducersOpInterface.sol";
 
-//
+
 contract RegSystemContract {
 
     using SafeMath for uint;
@@ -32,11 +32,16 @@ contract RegSystemContract {
 
     event LogRegProxy(address indexed proxy);
 
-    event LogUnregProducer(address indexed producer, uint unregTime);
+    event LogUnregProducer(
+        address indexed producer,
+        uint unregTime,
+        uint maliciousDeposit,
+        uint producersLen
+    );
 
     event LogUnregProxy(address indexed proxy, uint unregTime);
 
-    event LogWithdrawDeposit(address indexed producer, uint deposit, uint time);
+    event LogWithdrawDeposit(address indexed producer, uint deposit, uint rewards, uint time);
 
 
     modifier onlyMainContract() {
@@ -58,7 +63,7 @@ contract RegSystemContract {
         require(systemStorage.getUint(keccak256("user.role", producer)) == 0);
         // User should send default GET coin to be a producer
         uint depositForProducer = systemStorage.getUint(keccak256("system.depositForProducer"));
-        require(depositForProducer == msg.value);
+        require(msg.value >= depositForProducer);
         // TODO add length limit of producers
 
         // Set producer role
@@ -69,14 +74,16 @@ contract RegSystemContract {
         systemStorage.setString(keccak256("producer.webUrl", producer), webUrl);
         systemStorage.setString(keccak256("producer.p2pUrl", producer), p2pUrl);
         systemStorage.setUint(keccak256("producer.deposit", producer), msg.value);
+        // Calculate init weight of deposit
+        systemStorage.setUint(keccak256("producer.voteWeight", producer), msg.value);
 
         // Set producer init info
-        // Status of producer: 1 => active, 2 => unreg, 3 => been voted out
+        // Status of producer: 1 => active, 2 => unreg, 3 => been locked , 4 => been voted out
         systemStorage.setUint(keccak256("producer.status", producer), 1);
         systemStorage.setUint(keccak256("producer.outTime", producer), initOutTime);
 
         // Add producer and record index of producer
-        producerOp.addProducer(producer);
+        require(producerOp.addProducer(producer) == true);
 
         emit LogRegProducerCandidates(msg.sender, name, webUrl, p2pUrl, msg.value);
         return true;
@@ -132,7 +139,7 @@ contract RegSystemContract {
     function unregProducer() external returns(bool) {
         // producer => 1; proxy => 2; voter => 3;
         require(systemStorage.getUint(keccak256("user.role", msg.sender)) == 1);
-        // Status of producer: 1 => active, 2 => unreg, 3 => been voted out
+        // Status of producer: 1 => active, 2 => unreg, 3 => been locked , 4 => been voted out
         // Only active producer can unreg
         require(systemStorage.getUint(keccak256("producer.status", msg.sender)) == 1);
 
@@ -142,11 +149,18 @@ contract RegSystemContract {
         systemStorage.setUint(keccak256("producer.status", msg.sender), 2);
         // Update unreg(out) time
         systemStorage.setUint(keccak256("producer.outTime", msg.sender), now);
+        // Update rewards for voting out malicious bp
+        bytes32 maliciousKey = keccak256("producer.maliciousDeposit");
+        uint maliciousDeposit = systemStorage.getUint(maliciousKey);
+        uint producersLength = producerOp.getProducersLength();
+        uint rewards = maliciousDeposit.div(producersLength);
+        systemStorage.setUint(maliciousKey, maliciousDeposit.sub(rewards));
+        systemStorage.setUint(keccak256("producer.rewardsForVotingOutBadBP", msg.sender), rewards);
 
         // Remove producer from array
-        producerOp.removeProducer(msg.sender);
+        require(producerOp.removeProducer(msg.sender) == true);
         // Delete all producer's info after withdraw
-        emit LogUnregProducer(msg.sender, now);
+        emit LogUnregProducer(msg.sender, now, maliciousDeposit, producersLength);
         return true;
     }
 
@@ -189,11 +203,14 @@ contract RegSystemContract {
         systemStorage.deleteUint(statusKey);
         // Delete deposit
         bytes32 depositKey = keccak256("producer.deposit", msg.sender);
+        bytes32 maliciousKey = keccak256("producer.rewardsForVotingOutBadBP", msg.sender);
         uint deposit = systemStorage.getUint(depositKey);
+        uint rewards = systemStorage.getUint(maliciousKey);
         systemStorage.deleteUint(depositKey);
-        msg.sender.transfer(deposit);
+        systemStorage.deleteUint(maliciousKey);
+        msg.sender.transfer(deposit.add(rewards));
 
-        emit LogWithdrawDeposit(msg.sender, deposit, now);
+        emit LogWithdrawDeposit(msg.sender, deposit, rewards, now);
     }
 
 
@@ -201,9 +218,8 @@ contract RegSystemContract {
      * @dev Main contract will call this to destruct current contract and send get coin
      * @dev to new contract.
      */
-    function destructSelf(address newContract) public onlyMainContract returns(bool) {
+    function destructSelf(address newContract) public onlyMainContract {
         selfdestruct(newContract);
-        return true;
     }
 
 

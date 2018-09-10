@@ -1,4 +1,5 @@
 import assertRevert from "zeppelin-solidity/test/helpers/assertRevert";
+import { increaseTimeTo, duration } from "zeppelin-solidity/test/helpers/increaseTime"
 
 const SystemContractTest = artifacts.require("./SystemContractTest");
 const VoteSystemContractTest = artifacts.require("./VoteSystemContractTest");
@@ -27,12 +28,18 @@ contract("Upgradeable contract", function (accounts) {
         this.RegSystemContractTestIns2 = await RegSystemContractTest.new(this.SystemContractTestIns.address);
         await this.SystemContractTestIns.setSystemContract(voteContractName, this.VoteSystemContractTestIns.address);
         await this.SystemContractTestIns.setSystemContract(regContractName, this.RegSystemContractTestIns.address);
+
         // Reg 4 producers
-        await RegProducers(this.RegSystemContractTestIns, accounts);
+        this.producers = [];
+        this.producers.push(accounts[0]);
+        this.producers.push(accounts[1]);
+        this.producers.push(accounts[2]);
+        this.producers.push(accounts[3]);
+        await RegProducers(this.RegSystemContractTestIns, this.producers);
     })
 
     it("producer can propose a proposal for upgrading reg system contract", async function () {
-        const producer = accounts[1];
+        const producer = this.producers[1];
         // Reg contract
         // Just pass a address (the validation for contract will be done by community offline)
         const newAddress = this.RegSystemContractTestIns2.address;
@@ -63,7 +70,7 @@ contract("Upgradeable contract", function (accounts) {
     })
 
     it("other producers can vote for this proposal", async function () {
-        const producer = accounts[2];
+        const producer = this.producers[2];
         const auth = true;
 
         const { logs } = await this.SystemContractTestIns.vote(auth, {from: producer});
@@ -73,8 +80,8 @@ contract("Upgradeable contract", function (accounts) {
     })
 
     it("can not propose a new proposal if a proposal already exist and not after proposal period", async function () {
-        const producer = accounts[2];
-        const newAddress = accounts[1];
+        const producer = this.producers[2];
+        const newAddress = this.RegSystemContractTestIns2.address;
         const keys = [];
         keys.push(voteContractMappingKey);
         const value = [];
@@ -85,19 +92,19 @@ contract("Upgradeable contract", function (accounts) {
 
     it("only main contract can destruct system contract", async function () {
         // Use a test account to call destruct func
-        const acc = accounts[3]
-        const newAddress = accounts[4]
+        const acc = accounts[3];
+        const newAddress = this.RegSystemContractTestIns2.address;
         await assertRevert(this.RegSystemContractTestIns.destructSelf(newAddress), {from: acc})
     })
 
     it("can update system contract address/send get coin to new contract when vote reach length*2/3 + 1", async function () {
-        const producer2 = accounts[3];
+        const producer = this.producers[3];
         const auth = true;
 
         const oriBalance = await web3.eth.getBalance(this.RegSystemContractTestIns.address);
 
         // Update system contract if votes bigger than 2/3
-        const { logs } = await this.SystemContractTestIns.vote(auth, {from: producer2});
+        const { logs } = await this.SystemContractTestIns.vote(auth, {from: producer});
         const log = logs.find(e => e.event === "LogUpgradeSystemContract");
         should.exist(log);
 
@@ -111,7 +118,7 @@ contract("Upgradeable contract", function (accounts) {
         newBalance.should.be.bignumber.equal(oriBalance);
     })
 
-    it("original system can not use", async function () {
+    it("original system should be destructed", async function () {
         // Original system contract will be destructed
         // Original code should be deleted
         const code = web3.eth.getCode(this.RegSystemContractTestIns.address);
@@ -119,11 +126,11 @@ contract("Upgradeable contract", function (accounts) {
     })
 
     it("can propose/pass update config once original passed", async function () {
-        const producer = accounts[1];
+        const producer = this.producers[0];
         const keys = [];
         const var0 = web3.sha3("system.proposalPeriod");
         const var1 = web3.sha3("system.stakeForVote");
-        const var2 = web3.sha3("system.lockTimeForStake");
+        const var2 = web3.sha3("system.maxProducers");
         keys.push(var0);
         keys.push(var1);
         keys.push(var2);
@@ -131,7 +138,7 @@ contract("Upgradeable contract", function (accounts) {
         const values = [];
         const value0 = 2 * 72 * 60 * 60;
         const value1 = web3.toWei(2, "ether");
-        const value2 = 3 * 72 * 60 * 60;
+        const value2 = 5;
         values.push(value0);
         values.push(value1);
         values.push(value2);
@@ -139,14 +146,11 @@ contract("Upgradeable contract", function (accounts) {
         await this.SystemContractTestIns.propose(keys, values, 0, updateConfig, {from: producer});
 
         // vote for this proposal
-        const producer1 = accounts[2];
-        const producer2 = accounts[3];
-        const producer3 = accounts[4];
         const auth = true;
 
-        await this.SystemContractTestIns.vote(auth, {from: producer1});
-        await this.SystemContractTestIns.vote(auth, {from: producer2});
-        await this.SystemContractTestIns.vote(auth, {from: producer3});
+        await this.SystemContractTestIns.vote(auth, {from: this.producers[1]});
+        await this.SystemContractTestIns.vote(auth, {from: this.producers[2]});
+        await this.SystemContractTestIns.vote(auth, {from: this.producers[3]});
 
         const newValue0 = await this.SystemContractTestIns.getUint(var0);
         const newValue1 = await this.SystemContractTestIns.getUint(var1);
@@ -157,43 +161,116 @@ contract("Upgradeable contract", function (accounts) {
         newValue2.should.be.bignumber.equal(new BigNumber(value2));
     })
 
+    it("can use new system contract to reg producer", async function () {
+        const producer = accounts[9];
+        const name = "test"
+        const webUrl = "http://test"
+        const p2pUrl = "encode://123123"
+        const deposit = web3.toWei(5, "ether");
+
+        const { logs } = await this.RegSystemContractTestIns2.regProducerCandidates(name, webUrl, p2pUrl, {from: producer, value: deposit});
+        const log = logs.find(e => e.event === "LogRegProducerCandidates");
+        should.exist(log);
+        log.args.producer.should.equal(producer);
+        log.args.name.should.equal(name);
+        log.args.webUrl.should.equal(webUrl);
+        log.args.p2pUrl.should.equal(p2pUrl);
+        log.args.deposit.should.be.bignumber.equal(deposit);
+        const voteWeight = await this.RegSystemContractTestIns2.getProducer(producer);
+        voteWeight.should.be.bignumber.equal(deposit);
+    })
+
+    it("can not reg when producer's length reach threshold", async function () {
+        const producerLength = await this.SystemContractTestIns.getProducersLength();
+        const key = web3.sha3("system.maxProducers");
+        const threshold = await this.SystemContractTestIns.getUint(key);
+
+        threshold.sub(producerLength).should.be.bignumber.equal(new BigNumber(0));
+
+        // Can't reg
+        const producer = accounts[8];
+        const name = "test"
+        const webUrl = "http://test"
+        const p2pUrl = "encode://123123"
+        const deposit = web3.toWei(5, "ether");
+        await assertRevert(this.RegSystemContractTestIns2.regProducerCandidates(name, webUrl, p2pUrl, {from: producer, value: deposit}));
+    })
+
     it("can propose/pass vote out malicious producer", async function () {
-        const producer = accounts[1];
+        const producer = this.producers[0];
         const keys = [];
         const values = [];
-        const maliciousBP = accounts[2];
+        const maliciousBP = accounts[9];
 
         await this.SystemContractTestIns.propose(keys, values, maliciousBP, voteOutBP, {from: producer});
 
-        const producer1 = accounts[3];
-        const producer2 = accounts[4];
         const auth = true;
-
-        await this.SystemContractTestIns.vote(auth, {from: producer1});
-        const { logs } = await this.SystemContractTestIns.vote(auth, {from: producer2});
+        await this.SystemContractTestIns.vote(auth, {from: this.producers[1]});
+        await this.SystemContractTestIns.vote(auth, {from: this.producers[2]});
+        const { logs } = await this.SystemContractTestIns.vote(auth, {from: this.producers[3]});
         const log = logs.find(e => e.event === "LogVoteOutMaliciousBP");
         should.exist(log);
         log.args.bp.should.equal(maliciousBP);
     })
 
+    it("normal producers can get reward of voting out malicious bp", async function () {
+        const producer = this.producers[0];
+        const producersLength = await this.SystemContractTestIns.getProducersLength();
+        const deposit = web3.toWei(1, "ether");
+        const maliciousDeposit = web3.toWei(5, "ether");
+        const exceptReward = maliciousDeposit / producersLength;
+
+        const { logs } = await this.RegSystemContractTestIns2.unregProducer();
+
+        const log = logs.find(e => e.event === "LogUnregProducer");
+        should.exist(log);
+        log.args.producer.should.equal(producer);
+        log.args.maliciousDeposit.should.be.bignumber.equal(maliciousDeposit);
+        log.args.producersLen.should.be.bignumber.equal(producersLength);
+        const unregTime = log.args.unregTime;
+        const afterLockTime = unregTime.toNumber() + duration.hours(72) + duration.minutes(2);
+        await increaseTimeTo(afterLockTime);
+
+        const logInfo = await this.RegSystemContractTestIns2.withdrawDeposit({from: producer});
+        const withdrawLog = logInfo.logs.find(e => e.event === "LogWithdrawDeposit");
+        should.exist(withdrawLog);
+        withdrawLog.args.producer.should.equal(producer);
+        withdrawLog.args.deposit.should.be.bignumber.equal(deposit);
+        withdrawLog.args.rewards.should.be.bignumber.equal(new BigNumber(exceptReward));
+    })
+
     it("vote out producer can not unreg", async function () {
-        const bp = accounts[2];
+        const bp = accounts[9];
         await assertRevert(this.RegSystemContractTestIns2.unregProducer({from: bp}));
+    })
+
+    it("malicious can back to normal if proposal haven't pass", async function () {
+        const keys = [];
+        const values = [];
+        const maliciousBP = this.producers[1];
+        const proposer = this.producers[2];
+
+        await this.SystemContractTestIns.propose(keys, values, maliciousBP, voteOutBP, {from: proposer});
+        // Malicious bp can not unreg
+        await assertRevert(this.RegSystemContractTestIns2.unregProducer({from: maliciousBP}));
+
+        const auth = false;
+        await this.SystemContractTestIns.vote(auth, {from: this.producers[3]});
+        // await this.SystemContractTestIns.vote(auth, {from: this.producers[3]});
+
+        const { logs } = await this.RegSystemContractTestIns2.unregProducer({from: maliciousBP});
+        const log = logs.find(e => e.event = "LogUnregProducer");
+        should.exist(log);
     })
 })
 
-async function RegProducers(regContract, accounts) {
-    const producer0 = accounts[1];
-    const producer1 = accounts[2];
-    const producer2 = accounts[3];
-    const producer3 = accounts[4];
+async function RegProducers(regContract, producers) {
     const name = "test";
     const webUrl = "http://test";
     const p2pUrl = "encode://111";
     const deposit = web3.toWei(1, "ether");
 
-    await regContract.regProducerCandidates(name, webUrl, p2pUrl, {from: producer0, value: deposit});
-    await regContract.regProducerCandidates(name, webUrl, p2pUrl, {from: producer1, value: deposit});
-    await regContract.regProducerCandidates(name, webUrl, p2pUrl, {from: producer2, value: deposit});
-    await regContract.regProducerCandidates(name, webUrl, p2pUrl, {from: producer3, value: deposit});
+    for (var i = 0; i < producers.length; i++) {
+        await regContract.regProducerCandidates(name, webUrl, p2pUrl, {from: producers[i], value: deposit});
+    }
 }

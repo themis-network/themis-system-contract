@@ -154,8 +154,8 @@ contract("Vote system contract", function (accounts) {
         producersInfo[0][1].should.equal(producer1);
 
         // Check for weight
-        const producer0Weight = web3.toWei(5, "ether");
-        const producer1Weight = web3.toWei(2, "ether");
+        const producer0Weight = web3.toWei(6, "ether");
+        const producer1Weight = web3.toWei(3, "ether");
         producersInfo[1][0].should.be.bignumber.equal(producer0Weight);
         producersInfo[1][1].should.be.bignumber.equal(producer1Weight);
 

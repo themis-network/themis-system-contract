@@ -1,6 +1,7 @@
 pragma solidity ^0.4.24;
 
 import "./SystemStorage.sol";
+import "./libraries/SafeMath.sol";
 import "./ProducersOpInterface.sol";
 import "./DestructInterface.sol";
 
@@ -9,6 +10,8 @@ import "./DestructInterface.sol";
 // hence it will not execute constructor in contract. But this is not
 // convenience for test.
 contract SystemContractTest is SystemStorage, ProducersOpInterface {
+
+    using SafeMath for uint;
 
     Proposal proposal;
 
@@ -90,6 +93,7 @@ contract SystemContractTest is SystemStorage, ProducersOpInterface {
         uintStorage[keccak256("system.depositForProducer")] = 1 ether;
         uintStorage[keccak256("system.lockTimeForDeposit")] = 72 * 60 * 60;
         uintStorage[keccak256("system.producerSize")] = 4;
+        uintStorage[keccak256("system.maxProducers")] = 1000;
     }
 
     /**
@@ -109,13 +113,22 @@ contract SystemContractTest is SystemStorage, ProducersOpInterface {
      * @dev Flag indicates update config or upgrade contract
      */
     function propose(bytes32[] keys, uint[] values, address maliciousBP, ProposalType flag) public onlyValidateType(flag) onlyActiveProducer {
-        // Length of keys and values should be same
-        require(keys.length == values.length);
-        // 30 variables is enough for contract update
-        require(keys.length < 30);
         uint proposalPeriod = uintStorage[keccak256("system.proposalPeriod")];
         // ProposeTime will be zero when no proposal currently.
-        require(now > proposal.proposeTime + proposalPeriod || proposal.status == false);
+        require(now > proposal.proposeTime.add(proposalPeriod) || proposal.status == false);
+        // Upgrade contract or update config
+        if (flag != ProposalType.VoteOutProducer) {
+            // Length of keys and values should be same
+            require(keys.length == values.length);
+            // 30 variables is enough for contract update
+            require(keys.length < 30);
+        }
+        if (flag == ProposalType.VoteOutProducer) {
+            // Status of producer can be voted out is normal or unreg
+            require(maliciousBP != address(0));
+            uint status = uintStorage[keccak256("producer.status", maliciousBP)];
+            require(status == 1 || status == 2);
+        }
 
         proposal.proposer = msg.sender;
         proposal.proposeTime = now;
@@ -131,6 +144,14 @@ contract SystemContractTest is SystemStorage, ProducersOpInterface {
         proposal.values = values;
         proposal.flag = flag;
         proposal.maliciousBP = maliciousBP;
+
+        // Update maliciousBP's status
+        // maliciousBP can't do anything during vote
+        if (flag == ProposalType.VoteOutProducer) {
+            bytes32 key = keccak256("producer.status", proposal.maliciousBP);
+            uintStorage[keccak256("producer.oriStatus", proposal.maliciousBP)] = uintStorage[key];
+            uintStorage[keccak256("producer.status", proposal.maliciousBP)] = 3;
+        }
 
         emit LogPropose(msg.sender, keys, values, maliciousBP, uint(flag));
     }
@@ -159,10 +180,12 @@ contract SystemContractTest is SystemStorage, ProducersOpInterface {
             }
         } else {
             proposal.disapproveCount = proposal.disapproveCount + 1;
-            uint leastDisapproveCount = producers.length / 3 + 1;
+            uint leastDisapproveCount = producers.length / 3;
             if (proposal.disapproveCount >= leastDisapproveCount) {
                 // Do nothing but make next proposal accessible
                 proposal.status = false;
+                // Update maliciousBP's status to normal
+                uintStorage[keccak256("producer.status", proposal.maliciousBP)] = uintStorage[keccak256("producer.oriStatus", proposal.maliciousBP)];
             }
         }
 
@@ -170,18 +193,20 @@ contract SystemContractTest is SystemStorage, ProducersOpInterface {
     }
 
 
-    function addProducer(address producer) public onlyCurrentSystemContract {
+    function addProducer(address producer) public onlyCurrentSystemContract returns(bool) {
+        require(producers.length < uintStorage[keccak256("system.maxProducers")]);
         // Record index of producer: actualIndex + 1
         uintStorage[keccak256("producer.index", producer)] = producers.length;
         producers.push(producer);
+        return true;
     }
 
     /**
      * @dev Remove producer from array, use last item replace producer's index and reduce
      * @dev Array's length
      */
-    function removeProducer(address producer) public onlyCurrentSystemContract {
-        removeProducerInternal(producer);
+    function removeProducer(address producer) public onlyCurrentSystemContract returns(bool){
+        return removeProducerInternal(producer);
     }
 
     function getProducers() external view returns(address[]) {
@@ -265,11 +290,12 @@ contract SystemContractTest is SystemStorage, ProducersOpInterface {
         if (proposal.flag == ProposalType.VoteOutProducer) {
             uint status = uintStorage[keccak256("producer.status", proposal.maliciousBP)];
             if (status == 1) {
-                removeProducerInternal(proposal.maliciousBP);
+                require(removeProducerInternal(proposal.maliciousBP) == true);
             }
             // Set status to beenVotedOut, one can not do nothing after
-            uintStorage[keccak256("producer.status", proposal.maliciousBP)] = 3;
-            // TODO add deposit of maliciousBP to other bp
+            uintStorage[keccak256("producer.status", proposal.maliciousBP)] = 4;
+            bytes32 key = keccak256("producer.maliciousDeposit");
+            uintStorage[key] = uintStorage[key].add(uintStorage[keccak256("producer.deposit", proposal.maliciousBP)]);
 
             emit LogVoteOutMaliciousBP(proposal.maliciousBP);
             return ;
@@ -282,7 +308,7 @@ contract SystemContractTest is SystemStorage, ProducersOpInterface {
     /**
      * @dev Remove producer from array
      */
-    function removeProducerInternal(address producer) internal {
+    function removeProducerInternal(address producer) internal returns(bool) {
         require(producers.length > 0);
         uint index = uintStorage[keccak256("producer.index", producer)];
         uint lastIndex = producers.length - 1;
@@ -291,7 +317,7 @@ contract SystemContractTest is SystemStorage, ProducersOpInterface {
         // Remove last item
         if (index == lastIndex) {
             producers.length = lastIndex;
-            return;
+            return true;
         }
 
         // Replace index with last item and reduce length of producers
@@ -301,5 +327,6 @@ contract SystemContractTest is SystemStorage, ProducersOpInterface {
         uintStorage[keccak256("producer.index", producers[lastIndex])] = index;
         // Delete last item
         producers.length--;
+        return true;
     }
 }
