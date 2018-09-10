@@ -93,7 +93,7 @@ contract SystemContractTest is SystemStorage, ProducersOpInterface {
         uintStorage[keccak256("system.depositForProducer")] = 1 ether;
         uintStorage[keccak256("system.lockTimeForDeposit")] = 72 * 60 * 60;
         uintStorage[keccak256("system.producerSize")] = 4;
-        uintStorage[keccak256("system.maxProducers")] = 1000;
+        uintStorage[keccak256("system.maxProducerSize")] = 10000;
     }
 
     /**

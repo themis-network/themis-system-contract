@@ -130,7 +130,7 @@ contract("Upgradeable contract", function (accounts) {
         const keys = [];
         const var0 = web3.sha3("system.proposalPeriod");
         const var1 = web3.sha3("system.stakeForVote");
-        const var2 = web3.sha3("system.maxProducers");
+        const var2 = web3.sha3("system.maxProducerSize");
         keys.push(var0);
         keys.push(var1);
         keys.push(var2);
@@ -182,7 +182,7 @@ contract("Upgradeable contract", function (accounts) {
 
     it("can not reg when producer's length reach threshold", async function () {
         const producerLength = await this.SystemContractTestIns.getProducersLength();
-        const key = web3.sha3("system.maxProducers");
+        const key = web3.sha3("system.maxProducerSize");
         const threshold = await this.SystemContractTestIns.getUint(key);
 
         threshold.sub(producerLength).should.be.bignumber.equal(new BigNumber(0));
